@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>StockPilot API Test</title>
+</head>
+<body>
+    <h1>StockPilot Backend Connection Test</h1>
+    <div id="status">Testing connection...</div>
+    <div id="flights"></div>
+    <div id="products"></div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        
+        async function testConnection() {
+            try {
+                // Test health endpoint
+                const health = await fetch(`${API_BASE}/`);
+                const healthData = await health.json();
+                document.getElementById('status').innerHTML = `✅ Backend connected: ${healthData.message}`;
+                
+                // Test flights endpoint
+                const flights = await fetch(`${API_BASE}/flights`);
+                const flightsData = await flights.json();
+                document.getElementById('flights').innerHTML = `
+                    <h3>Flights (${flightsData.length} found):</h3>
+                    <ul>
+                        ${flightsData.slice(0, 5).map(flight => 
+                            `<li>${flight.flight_number} - ${flight.destination} (${flight.departure_time})</li>`
+                        ).join('')}
+                    </ul>
+                `;
+                
+                // Test products for first flight
+                if (flightsData.length > 0) {
+                    const products = await fetch(`${API_BASE}/flights/${flightsData[0].flight_number}`);
+                    const productsData = await products.json();
+                    document.getElementById('products').innerHTML = `
+                        <h3>Products for ${flightsData[0].flight_number}:</h3>
+                        <ul>
+                            ${productsData.map(product => 
+                                `<li>${product.product_name} - ${product.category_quantity} units (${product.weight_kg}kg each)</li>`
+                            ).join('')}
+                        </ul>
+                    `;
+                }
+                
+            } catch (error) {
+                document.getElementById('status').innerHTML = `❌ Connection failed: ${error.message}`;
+            }
+        }
+        
+        testConnection();
+    </script>
+</body>
+</html>
