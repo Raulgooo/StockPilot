@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { Dashboard } from "@/components/Dashboard";
 import { PreparationView } from "@/components/PreparationView";
 import { PickExperience } from "@/components/PickExperience";
+import { InventoryView } from "@/components/InventoryView";
 import { fetchFlights, fetchFlightDetails, startRun } from "@/components/services/flights";
 import { FlightDetails, Flight } from "@/types/flight";
 
-type View = "dashboard" | "preparation" | "picking";
+type View = "dashboard" | "preparation" | "picking" | "inventory";
 
 const Index = () => {
   const [currentView, setCurrentView] = useState<View>("dashboard");
@@ -65,7 +66,13 @@ const Index = () => {
       setSelectedFlight(null);
     } else if (currentView === "picking") {
       setCurrentView("preparation");
+    } else if (currentView === "inventory") {
+      setCurrentView("dashboard");
     }
+  };
+
+  const handleViewInventory = () => {
+    setCurrentView("inventory");
   };
 
   if (loading) {
@@ -97,7 +104,11 @@ const Index = () => {
   return (
     <>
       {currentView === "dashboard" && (
-        <Dashboard flights={flights} onStartPickRun={handleStartPickRun} />
+        <Dashboard 
+          flights={flights} 
+          onStartPickRun={handleStartPickRun}
+          onViewInventory={handleViewInventory}
+        />
       )}
       {currentView === "preparation" && selectedFlight && (
         <PreparationView
@@ -112,6 +123,9 @@ const Index = () => {
           onComplete={handleComplete}
           onBack={handleBack}
         />
+      )}
+      {currentView === "inventory" && (
+        <InventoryView onBack={handleBack} />
       )}
     </>
   );

@@ -19,7 +19,19 @@ async function apiPost(endpoint, data = null) {
   return await res.json();
 }
 
+async function apiDelete(endpoint) {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return await res.json();
+}
+
 export default {
   get: apiGet,
   post: apiPost,
+  delete: apiDelete,
 };
