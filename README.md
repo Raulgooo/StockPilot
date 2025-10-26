@@ -1,4 +1,5 @@
-# StockPilot 🛩️
+# VERSION COMPLETA EN BRANCH "sensors"
+#StockPilot 🛩️
 
 Sistema de gestión de catering para vuelos de aerolíneas.
 
