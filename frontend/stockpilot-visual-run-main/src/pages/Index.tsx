@@ -3,8 +3,6 @@ import { Dashboard } from "@/components/Dashboard";
 import { PreparationView } from "@/components/PreparationView";
 import { PickExperience } from "@/components/PickExperience";
 import { InventoryView } from "@/components/InventoryView";
-import { OrdersView } from "@/components/OrdersView";
-import { SimulationSettings } from "@/components/SimulationSettings";
 import { fetchFlights, fetchFlightDetails, startRun } from "@/components/services/flights";
 import { FlightDetails, Flight } from "@/types/flight";
 
@@ -118,8 +116,6 @@ const Index = () => {
           flights={flights} 
           onStartPickRun={handleStartPickRun}
           onViewInventory={handleViewInventory}
-          onViewOrders={handleViewOrders}
-          onViewSettings={handleViewSettings}
         />
       )}
       {currentView === "preparation" && selectedFlight && (
@@ -135,15 +131,6 @@ const Index = () => {
           onComplete={handleComplete}
           onBack={handleBack}
         />
-      )}
-      {currentView === "inventory" && (
-        <InventoryView onBack={handleBack} />
-      )}
-      {currentView === "orders" && (
-        <OrdersView onBack={handleBack} />
-      )}
-      {currentView === "settings" && (
-        <SimulationSettings onBack={handleBack} />
       )}
     </>
   );

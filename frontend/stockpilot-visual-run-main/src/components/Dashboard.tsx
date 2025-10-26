@@ -164,24 +164,6 @@ export const Dashboard = ({ flights, onStartPickRun, onViewInventory, onViewOrde
                     <Package className="h-4 w-4 mr-2" />
                     Ver Inventario Completo
                   </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={onViewOrders}
-                  >
-                    <ShoppingCart className="h-4 w-4 mr-2" />
-                    Gestionar Pedidos
-                  </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={onViewSettings}
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Configuración
-                  </Button>
                 </div>
               </div>
             </Card>
