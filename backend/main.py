@@ -6,13 +6,17 @@ import sqlite3
 import csv
 import os
 import time
+from datetime import datetime, timedelta
 import threading
 from inventory import C_lote, R_lote, D_lote, init_db as init_inventory_db
+from boton import generate_ai_inventory_report_openrouter
 
 
 # ---------- CONFIG ----------
 DB_PATH = "flights.db"
 CSV_PATH = "flights_data.csv"
+SUPPLIER_CSV_PATH = "supplier_products.csv"
+ORDERS_DB_PATH = "orders.db"
 
 # ---------- APP ----------
 app = FastAPI(title="Catering Logistics API", version="0.3")
@@ -48,6 +52,32 @@ class InventoryItem(BaseModel):
     id_individual: str
     caducidad: str
     product_name: str
+
+class SupplierProduct(BaseModel):
+    product_name: str
+    weight_kg: float
+    price_per_unit: float
+    delivery_time_days: int
+    min_order_quantity: int
+    description: str
+
+class OrderRequest(BaseModel):
+    product_name: str
+    quantity: int  # Must be multiple of 50
+
+class OrderResponse(BaseModel):
+    order_id: str
+    product_name: str
+    quantity: int
+    status: str
+    order_date: str
+    expected_delivery: str
+    lot_id: str = None
+    qr_code: str = None
+
+class SimulationSettings(BaseModel):
+    delivery_time_multiplier: float = 1.0  # Multiplier for delivery times
+    auto_place_orders: bool = True  # Auto-place orders when received
 
 # ---------- MODELS ----------
 class Product:
@@ -163,6 +193,8 @@ def load_csv():
 def startup():
     init_db()
     init_inventory_db()  # Initialize inventory database
+    init_orders_db()  # Initialize orders database
+    load_supplier_products()  # Load supplier products
     load_csv()
 
 
@@ -322,7 +354,59 @@ class SensorController:
 # instancia global
 sensor_controller = SensorController()
 
+# Global simulation settings
+simulation_settings = SimulationSettings()
+
+# Supplier products cache
+supplier_products = []
+
+# ---------- UTILITY FUNCTIONS ----------
+def load_supplier_products():
+    """Load supplier products from CSV"""
+    global supplier_products
+    try:
+        with open(SUPPLIER_CSV_PATH, 'r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            supplier_products = [SupplierProduct(**row) for row in reader]
+    except FileNotFoundError:
+        supplier_products = []
+
+def init_orders_db():
+    """Initialize orders database"""
+    conn = sqlite3.connect(ORDERS_DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            order_id TEXT PRIMARY KEY,
+            product_name TEXT,
+            quantity INTEGER,
+            status TEXT,
+            order_date TEXT,
+            expected_delivery TEXT,
+            actual_delivery TEXT,
+            lot_id TEXT,
+            qr_code TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def generate_order_id():
+    """Generate unique order ID"""
+    return f"ORD_{int(time.time())}_{hash(time.time()) % 10000:04d}"
+
 # ---------- INVENTORY ROUTES ----------
+@app.post("/inventory/ai-report")
+def generate_ai_report():
+    """Generate an AI-powered inventory report"""
+    try:
+        result = generate_ai_inventory_report_openrouter()
+        if result["status"] == "error":
+            raise HTTPException(status_code=500, detail=result["message"])
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/inventory/lots", response_model=LotResponse)
 def create_lot(request: CreateLotRequest):
     """Crear un nuevo lote con productos individuales"""
@@ -498,7 +582,36 @@ def take_one(product_name: str):
         ok = sensor_controller.take_one(product_name)
         if not ok:
             raise HTTPException(status_code=400, detail="No more units available.")
-        return {"status": "ok", "message": f"Taken one {product_name}"}
+        
+        # Subtract from inventory when taking a product
+        try:
+            init_inventory_db()
+            conn = sqlite3.connect("inventory.db")
+            cur = conn.cursor()
+            
+            # Find the first available item of this product
+            cur.execute(
+                "SELECT id_individual FROM inventory WHERE product_name = ? ORDER BY caducidad ASC LIMIT 1",
+                (product_name,)
+            )
+            result = cur.fetchone()
+            
+            if result:
+                # Remove the item from inventory
+                cur.execute(
+                    "DELETE FROM inventory WHERE id_individual = ?",
+                    (result[0],)
+                )
+                conn.commit()
+                conn.close()
+                return {"status": "ok", "message": f"Taken one {product_name} from inventory"}
+            else:
+                conn.close()
+                return {"status": "ok", "message": f"Taken one {product_name} (no inventory item found)"}
+        except Exception as e:
+            # If inventory update fails, still return success for the sensor
+            return {"status": "ok", "message": f"Taken one {product_name} (inventory update failed: {str(e)})"}
+            
     except KeyError:
         raise HTTPException(status_code=404, detail="Sensor not found")
 
@@ -517,4 +630,220 @@ def put_one(product_name: str):
 def get_run_status():
     """Devuelve el estado actual de sensores y basket"""
     return sensor_controller.get_status()
+
+
+@app.get("/runs/stats")
+def get_runs_stats():
+    """Obtener estadísticas de runs completados"""
+    try:
+        # Por ahora retornamos datos mockup, pero esto se puede conectar a una base de datos real
+        # donde se guarden los runs completados
+        return {
+            "completed_today": 18,
+            "efficiency": 96,
+            "total_runs_this_week": 45,
+            "average_time_per_run": 12.5
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving runs stats: {str(e)}")
+
+# ---------- SUPPLIER ROUTES ----------
+@app.get("/supplier/products")
+def get_supplier_products():
+    """Get available supplier products"""
+    return supplier_products
+
+@app.post("/supplier/orders", response_model=OrderResponse)
+def create_order(request: OrderRequest):
+    """Create a new supplier order"""
+    try:
+        # Validate quantity is multiple of 50
+        if request.quantity % 50 != 0:
+            raise HTTPException(status_code=400, detail="Quantity must be multiple of 50")
+        
+        # Find supplier product
+        supplier_product = next((p for p in supplier_products if p.product_name == request.product_name), None)
+        if not supplier_product:
+            raise HTTPException(status_code=404, detail="Product not found in supplier catalog")
+        
+        # Check minimum order quantity
+        if request.quantity < supplier_product.min_order_quantity:
+            raise HTTPException(status_code=400, detail=f"Minimum order quantity is {supplier_product.min_order_quantity}")
+        
+        # Create order
+        order_id = generate_order_id()
+        order_date = datetime.now().isoformat()
+        delivery_days = int(supplier_product.delivery_time_days * simulation_settings.delivery_time_multiplier)
+        expected_delivery = (datetime.now() + timedelta(days=delivery_days)).isoformat()
+        
+        # Save to database
+        conn = sqlite3.connect(ORDERS_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO orders (order_id, product_name, quantity, status, order_date, expected_delivery)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (order_id, request.product_name, request.quantity, "in_delivery", order_date, expected_delivery))
+        conn.commit()
+        conn.close()
+        
+        return OrderResponse(
+            order_id=order_id,
+            product_name=request.product_name,
+            quantity=request.quantity,
+            status="in_delivery",
+            order_date=order_date,
+            expected_delivery=expected_delivery
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating order: {str(e)}")
+
+@app.get("/supplier/orders")
+def get_orders():
+    """Get all orders"""
+    try:
+        conn = sqlite3.connect(ORDERS_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM orders ORDER BY order_date DESC")
+        rows = cur.fetchall()
+        conn.close()
+        
+        orders = []
+        for row in rows:
+            orders.append({
+                "order_id": row[0],
+                "product_name": row[1],
+                "quantity": row[2],
+                "status": row[3],
+                "order_date": row[4],
+                "expected_delivery": row[5],
+                "actual_delivery": row[6],
+                "lot_id": row[7],
+                "qr_code": row[8]
+            })
+        
+        return orders
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving orders: {str(e)}")
+
+@app.post("/supplier/orders/{order_id}/receive")
+def receive_order(order_id: str):
+    """Mark order as received and generate lot"""
+    try:
+        conn = sqlite3.connect(ORDERS_DB_PATH)
+        cur = conn.cursor()
+        
+        # Get order details
+        cur.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
+        order = cur.fetchone()
+        if not order:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        # Update order status
+        actual_delivery = datetime.now().isoformat()
+        lot_id = f"LOT_{order_id}_{int(time.time())}"
+        
+        cur.execute("""
+            UPDATE orders 
+            SET status = ?, actual_delivery = ?, lot_id = ?
+            WHERE order_id = ?
+        """, ("received", actual_delivery, lot_id, order_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # Generate QR code for the lot
+        from inventory import generate_qr
+        lot_data = {
+            "lot_id": lot_id,
+            "cantidad": order[2],  # quantity
+            "product_name": order[1],  # product_name
+            "productos": []  # Will be populated when placed
+        }
+        qr_filename = f"QR_{lot_id}.png"
+        generate_qr(lot_data, qr_filename)
+        
+        return {"status": "ok", "message": f"Order {order_id} received", "lot_id": lot_id}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error receiving order: {str(e)}")
+
+@app.post("/supplier/orders/{order_id}/place")
+def place_order(order_id: str):
+    """Place order in intelligent shelves (add to inventory)"""
+    try:
+        conn = sqlite3.connect(ORDERS_DB_PATH)
+        cur = conn.cursor()
+        
+        # Get order details
+        cur.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
+        order = cur.fetchone()
+        if not order:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        if order[3] != "received":  # status
+            conn.close()
+            raise HTTPException(status_code=400, detail="Order must be received before placing")
+        
+        # Create lot in inventory
+        from inventory import C_lote
+        lot_data = C_lote(
+            lot_id=order[7],  # lot_id
+            cantidad=order[2],  # quantity
+            dias_caducidad=30,  # Default 30 days
+            product_name=order[1]  # product_name
+        )
+        
+        # Update order status
+        cur.execute("UPDATE orders SET status = ? WHERE order_id = ?", ("available", order_id))
+        conn.commit()
+        conn.close()
+        
+        return {"status": "ok", "message": f"Order {order_id} placed in inventory", "lot_data": lot_data}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error placing order: {str(e)}")
+
+@app.delete("/supplier/orders/{order_id}")
+def delete_order(order_id: str):
+    """Delete completed order"""
+    try:
+        conn = sqlite3.connect(ORDERS_DB_PATH)
+        cur = conn.cursor()
+        
+        # Check if order exists and is available
+        cur.execute("SELECT status FROM orders WHERE order_id = ?", (order_id,))
+        result = cur.fetchone()
+        if not result:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        if result[0] != "available":
+            conn.close()
+            raise HTTPException(status_code=400, detail="Can only delete available orders")
+        
+        # Delete order
+        cur.execute("DELETE FROM orders WHERE order_id = ?", (order_id,))
+        conn.commit()
+        conn.close()
+        
+        return {"status": "ok", "message": f"Order {order_id} deleted"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting order: {str(e)}")
+
+# ---------- SIMULATION SETTINGS ROUTES ----------
+@app.get("/simulation/settings")
+def get_simulation_settings():
+    """Get current simulation settings"""
+    return simulation_settings
+
+@app.post("/simulation/settings")
+def update_simulation_settings(settings: SimulationSettings):
+    """Update simulation settings"""
+    global simulation_settings
+    simulation_settings = settings
+    return {"status": "ok", "message": "Settings updated", "settings": simulation_settings}
 

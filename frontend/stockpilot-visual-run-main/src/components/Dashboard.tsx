@@ -1,16 +1,22 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plane, Clock, MapPin, AlertCircle, Package } from "lucide-react";
+import { Plane, Clock, MapPin, AlertCircle, Package, Settings, ShoppingCart } from "lucide-react";
 import { Flight } from "@/types/flight";
+import { useInventorySummary } from "@/hooks/use-inventory-summary";
 
 interface DashboardProps {
   flights: Flight[];
   onStartPickRun: (flightNumber: string) => void;
   onViewInventory?: () => void;
+  onViewOrders?: () => void;
+  onViewSettings?: () => void;
 }
 
-export const Dashboard = ({ flights, onStartPickRun, onViewInventory }: DashboardProps) => {
+export const Dashboard = ({ flights, onStartPickRun, onViewInventory, onViewOrders, onViewSettings }: DashboardProps) => {
+  // Get real inventory data
+  const inventoryData = useInventorySummary();
+
   // Sort flights by departure time to identify priority
   const sortedFlights = [...flights].sort(
     (a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
@@ -127,7 +133,9 @@ export const Dashboard = ({ flights, onStartPickRun, onViewInventory }: Dashboar
                         Lotes en Riesgo
                       </span>
                     </div>
-                    <p className="text-3xl font-bold text-foreground">12</p>
+                    <p className="text-3xl font-bold text-foreground">
+                      {inventoryData.loading ? "..." : inventoryData.riskLots}
+                    </p>
                     <p className="text-xs text-muted-foreground mt-1">
                       Caducidad {"<"} 3 días
                     </p>
@@ -137,26 +145,27 @@ export const Dashboard = ({ flights, onStartPickRun, onViewInventory }: Dashboar
                     <span className="text-sm font-medium text-muted-foreground block mb-2">
                       Productos Disponibles
                     </span>
-                    <p className="text-3xl font-bold text-foreground">248</p>
-                    <p className="text-xs text-muted-foreground mt-1">En 6 categorías</p>
+                    <p className="text-3xl font-bold text-foreground">
+                      {inventoryData.loading ? "..." : inventoryData.availableProducts}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      En {inventoryData.loading ? "..." : inventoryData.uniqueProducts} categorías
+                    </p>
                   </div>
 
-                  <div className="p-4 bg-[hsl(var(--status-confirm)/0.1)] border border-[hsl(var(--status-confirm)/0.3)] rounded-lg">
-                    <span className="text-sm font-medium text-muted-foreground block mb-2">
-                      Runs Completados Hoy
-                    </span>
-                    <p className="text-3xl font-bold text-foreground">18</p>
-                    <p className="text-xs text-muted-foreground mt-1">96% eficiencia</p>
-                  </div>
                 </div>
 
-                <Button 
-                  variant="outline" 
-                  className="w-full mt-4"
-                  onClick={onViewInventory}
-                >
-                  Ver Inventario Completo
-                </Button>
+                <div className="space-y-2">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={onViewInventory}
+                  >
+                    <Package className="h-4 w-4 mr-2" />
+                    Ver Inventario Completo
+                  </Button>
+                  
+                </div>
               </div>
             </Card>
           </div>
