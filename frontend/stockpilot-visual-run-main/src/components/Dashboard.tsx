@@ -7,9 +7,10 @@ import { Flight } from "@/types/flight";
 interface DashboardProps {
   flights: Flight[];
   onStartPickRun: (flightNumber: string) => void;
+  onViewInventory?: () => void;
 }
 
-export const Dashboard = ({ flights, onStartPickRun }: DashboardProps) => {
+export const Dashboard = ({ flights, onStartPickRun, onViewInventory }: DashboardProps) => {
   // Sort flights by departure time to identify priority
   const sortedFlights = [...flights].sort(
     (a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime()
@@ -149,7 +150,11 @@ export const Dashboard = ({ flights, onStartPickRun }: DashboardProps) => {
                   </div>
                 </div>
 
-                <Button variant="outline" className="w-full mt-4">
+                <Button 
+                  variant="outline" 
+                  className="w-full mt-4"
+                  onClick={onViewInventory}
+                >
                   Ver Inventario Completo
                 </Button>
               </div>

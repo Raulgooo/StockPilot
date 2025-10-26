@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { ShoppingCart, Package, CheckCircle, XCircle, Pause, ArrowLeft } from "lucide-react";
 import { FlightDetails, Product } from "@/types/flight";
 import { useToast } from "@/hooks/use-toast";
+import { takeOne, putOne, getRunStatus } from "@/components/services/flights";
 
 interface PickExperienceProps {
   flightDetails: FlightDetails;
@@ -44,40 +45,51 @@ export const PickExperience = ({
 
   const progress = (completedPicks / flightDetails.products.length) * 100;
 
-  const handleShelfClick = (shelfId: number) => {
+  const handleShelfClick = async (shelfId: number) => {
     if (isPaused) return;
 
     const shelf = shelves[shelfId];
 
     if (shelf.status === "active") {
-      // Successful pick
-      setShelves((prev) =>
-        prev.map((s) =>
-          s.id === shelfId
-            ? { ...s, status: "complete" }
-            : s.id === shelfId + 1
-            ? { ...s, status: "active" }
-            : s
-        )
-      );
+      try {
+        // Call the real backend API to take one item
+        await takeOne(shelf.product.productName);
+        
+        // Update local state
+        setShelves((prev) =>
+          prev.map((s) =>
+            s.id === shelfId
+              ? { ...s, status: "complete" }
+              : s.id === shelfId + 1
+              ? { ...s, status: "active" }
+              : s
+          )
+        );
 
-      setCompletedPicks((prev) => prev + 1);
-      setCurrentPickIndex((prev) => prev + 1);
+        setCompletedPicks((prev) => prev + 1);
+        setCurrentPickIndex((prev) => prev + 1);
 
-      toast({
-        title: "Pick Exitoso",
-        description: `${shelf.product.productName} - ${shelf.product.categoryQuantity} unidades`,
-      });
+        toast({
+          title: "Pick Exitoso",
+          description: `${shelf.product.productName} - ${shelf.product.categoryQuantity} unidades`,
+        });
 
-      // Check if all picks are complete
-      if (shelfId === shelves.length - 1) {
-        setTimeout(() => {
-          toast({
-            title: "Run Completado",
-            description: "Todos los productos han sido pickeados exitosamente",
-          });
-          onComplete();
-        }, 1000);
+        // Check if all picks are complete
+        if (shelfId === shelves.length - 1) {
+          setTimeout(() => {
+            toast({
+              title: "Run Completado",
+              description: "Todos los productos han sido pickeados exitosamente",
+            });
+            onComplete();
+          }, 1000);
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "No se pudo tomar el producto",
+          variant: "destructive",
+        });
       }
     } else if (shelf.status === "inactive" || shelf.status === "error") {
       // Error pick

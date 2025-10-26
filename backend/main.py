@@ -1,10 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
 import sqlite3
 import csv
 import os
 import time
 import threading
+from inventory import C_lote, R_lote, D_lote, init_db as init_inventory_db
 
 
 # ---------- CONFIG ----------
@@ -22,6 +25,30 @@ app.add_middleware(
 )
 
 
+# ---------- PYDANTIC MODELS ----------
+class CreateLotRequest(BaseModel):
+    lot_id: str
+    cantidad: int
+    dias_caducidad: int
+    product_name: str = "Producto"
+
+class ProductResponse(BaseModel):
+    id_individual: str
+    caducidad: str
+    product_name: str
+
+class LotResponse(BaseModel):
+    lot_id: str
+    cantidad: int
+    product_name: str
+    productos: List[ProductResponse]
+
+class InventoryItem(BaseModel):
+    lot_id: str
+    id_individual: str
+    caducidad: str
+    product_name: str
+
 # ---------- MODELS ----------
 class Product:
     """Represents a single product item for a flight"""
@@ -38,7 +65,6 @@ class Product:
             "category_quantity": self.category_quantity,
             "weight_kg": self.weight_kg
         }
-
 
 class Products:
     """Collection of Product objects"""
@@ -136,6 +162,7 @@ def load_csv():
 @app.on_event("startup")
 def startup():
     init_db()
+    init_inventory_db()  # Initialize inventory database
     load_csv()
 
 
@@ -295,6 +322,156 @@ class SensorController:
 # instancia global
 sensor_controller = SensorController()
 
+# ---------- INVENTORY ROUTES ----------
+@app.post("/inventory/lots", response_model=LotResponse)
+def create_lot(request: CreateLotRequest):
+    """Crear un nuevo lote con productos individuales"""
+    try:
+        lot_data = C_lote(request.lot_id, request.cantidad, request.dias_caducidad, request.product_name)
+        return LotResponse(
+            lot_id=lot_data["lot_id"],
+            cantidad=lot_data["cantidad"],
+            product_name=lot_data["product_name"],
+            productos=[ProductResponse(**product) for product in lot_data["productos"]]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error creating lot: {str(e)}")
+
+@app.get("/inventory/lots/{lot_id}", response_model=LotResponse)
+def get_lot(lot_id: str):
+    """Obtener información de un lote específico"""
+    lot_data = R_lote(lot_id)
+    if not lot_data:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    
+    return LotResponse(
+        lot_id=lot_data["lot_id"],
+        cantidad=lot_data["cantidad"],
+        product_name=lot_data["product_name"],
+        productos=[ProductResponse(**product) for product in lot_data["productos"]]
+    )
+
+@app.delete("/inventory/lots/{identifier}")
+def delete_lot_or_product(identifier: str):
+    """Eliminar un lote completo o un producto individual"""
+    try:
+        inventory = D_lote(identifier)
+        return {
+            "status": "success",
+            "message": f"Deleted {identifier}",
+            "remaining_inventory": len(inventory)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error deleting: {str(e)}")
+
+@app.get("/inventory", response_model=List[InventoryItem])
+def get_full_inventory():
+    """Obtener el inventario completo"""
+    try:
+        init_inventory_db()
+        conn = sqlite3.connect("inventory.db")
+        cur = conn.cursor()
+        cur.execute("SELECT lot_id, id_individual, caducidad, product_name FROM inventory ORDER BY product_name, lot_id, id_individual")
+        rows = cur.fetchall()
+        conn.close()
+        
+        return [InventoryItem(lot_id=r[0], id_individual=r[1], caducidad=r[2], product_name=r[3]) for r in rows]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving inventory: {str(e)}")
+
+@app.get("/inventory/by-product")
+def get_inventory_by_product():
+    """Obtener inventario agrupado por producto"""
+    try:
+        init_inventory_db()
+        conn = sqlite3.connect("inventory.db")
+        cur = conn.cursor()
+        
+        # Obtener inventario agrupado por producto
+        cur.execute("""
+            SELECT 
+                product_name,
+                lot_id,
+                COUNT(*) as cantidad,
+                MIN(caducidad) as fecha_caducidad_mas_temprana,
+                GROUP_CONCAT(id_individual) as ids_individuales
+            FROM inventory 
+            GROUP BY product_name, lot_id 
+            ORDER BY product_name, lot_id
+        """)
+        rows = cur.fetchall()
+        conn.close()
+        
+        # Agrupar por producto
+        products = {}
+        for row in rows:
+            product_name = row[0]
+            lot_id = row[1]
+            cantidad = row[2]
+            fecha_caducidad = row[3]
+            ids_individuales = row[4].split(',')
+            
+            if product_name not in products:
+                products[product_name] = {
+                    "product_name": product_name,
+                    "total_quantity": 0,
+                    "lots": []
+                }
+            
+            products[product_name]["lots"].append({
+                "lot_id": lot_id,
+                "cantidad": cantidad,
+                "fecha_caducidad_mas_temprana": fecha_caducidad,
+                "ids_individuales": ids_individuales
+            })
+            products[product_name]["total_quantity"] += cantidad
+        
+        return list(products.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving inventory by product: {str(e)}")
+
+@app.get("/inventory/summary")
+def get_inventory_summary():
+    """Obtener un resumen del inventario por lotes"""
+    try:
+        init_inventory_db()
+        conn = sqlite3.connect("inventory.db")
+        cur = conn.cursor()
+        
+        # Obtener resumen por lotes
+        cur.execute("""
+            SELECT lot_id, COUNT(*) as cantidad, MIN(caducidad) as fecha_caducidad_mas_temprana
+            FROM inventory 
+            GROUP BY lot_id 
+            ORDER BY lot_id
+        """)
+        lot_summary = cur.fetchall()
+        
+        # Obtener total de productos
+        cur.execute("SELECT COUNT(*) FROM inventory")
+        total_products = cur.fetchone()[0]
+        
+        # Obtener total de lotes únicos
+        cur.execute("SELECT COUNT(DISTINCT lot_id) FROM inventory")
+        total_lots = cur.fetchone()[0]
+        
+        conn.close()
+        
+        return {
+            "total_products": total_products,
+            "total_lots": total_lots,
+            "lots": [
+                {
+                    "lot_id": lot[0],
+                    "cantidad": lot[1],
+                    "fecha_caducidad_mas_temprana": lot[2]
+                }
+                for lot in lot_summary
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving inventory summary: {str(e)}")
+
 # ---------- SENSOR ROUTES ----------
 @app.post("/run/start/{flight_number}")
 def start_run(flight_number: str):
@@ -340,3 +517,4 @@ def put_one(product_name: str):
 def get_run_status():
     """Devuelve el estado actual de sensores y basket"""
     return sensor_controller.get_status()
+
