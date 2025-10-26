@@ -282,34 +282,6 @@ export const InventoryView = ({ onBack }: InventoryViewProps) => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Product Name</label>
-                <input
-                  type="text"
-                  value={newLot.productName}
-                  onChange={(e) => setNewLot({ ...newLot, productName: e.target.value })}
-                  className="w-full p-2 border rounded-md"
-                  placeholder="Enter product name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Quantity</label>
-                <input
-                  type="number"
-                  value={newLot.cantidad}
-                  onChange={(e) => setNewLot({ ...newLot, cantidad: parseInt(e.target.value) || 1 })}
-                  className="w-full p-2 border rounded-md"
-                  min="1"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Days to Expiration</label>
-                <input
-                  type="number"
-                  value={newLot.diasCaducidad}
-                  onChange={(e) => setNewLot({ ...newLot, diasCaducidad: parseInt(e.target.value) || 30 })}
-                  className="w-full p-2 border rounded-md"
-                  min="1"
-                />
               </div>
             </div>
             <div className="flex gap-2 mt-4">

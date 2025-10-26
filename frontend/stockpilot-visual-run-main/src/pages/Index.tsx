@@ -116,6 +116,8 @@ const Index = () => {
           flights={flights} 
           onStartPickRun={handleStartPickRun}
           onViewInventory={handleViewInventory}
+          onViewOrders={handleViewOrders}
+          onViewSettings={handleViewSettings}
         />
       )}
       {currentView === "preparation" && selectedFlight && (
@@ -131,6 +133,15 @@ const Index = () => {
           onComplete={handleComplete}
           onBack={handleBack}
         />
+      )}
+      {currentView === "inventory" && (
+        <InventoryView onBack={handleBack} />
+      )}
+      {currentView === "orders" && (
+        <OrdersView onBack={handleBack} />
+      )}
+      {currentView === "settings" && (
+        <SimulationSettings onBack={handleBack} />
       )}
     </>
   );

@@ -80,6 +80,7 @@ def C_lote(lot_id: str, cantidad: int, dias_caducidad: int, product_name: str = 
     }
 
     # Generar QR con información del lote
+    
     qr_filename = f"QR_{lot_id}.png"
     generate_qr(lote_data, qr_filename)
 

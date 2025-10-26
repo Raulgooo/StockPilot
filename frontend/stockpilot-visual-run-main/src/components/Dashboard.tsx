@@ -164,6 +164,7 @@ export const Dashboard = ({ flights, onStartPickRun, onViewInventory, onViewOrde
                     <Package className="h-4 w-4 mr-2" />
                     Ver Inventario Completo
                   </Button>
+                  
                 </div>
               </div>
             </Card>
