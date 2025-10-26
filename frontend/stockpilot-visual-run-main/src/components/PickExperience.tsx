@@ -3,10 +3,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ShoppingCart, Package, CheckCircle, XCircle, Pause, ArrowLeft } from "lucide-react";
+import { ShoppingCart, Package, CheckCircle, XCircle, Pause, ArrowLeft, AlertTriangle } from "lucide-react";
 import { FlightDetails, Product } from "@/types/flight";
 import { useToast } from "@/hooks/use-toast";
 import { takeOne, putOne, getRunStatus } from "@/components/services/flights";
+import { useRunStatus } from "@/hooks/use-run-status";
 
 interface PickExperienceProps {
   flightDetails: FlightDetails;
@@ -31,6 +32,12 @@ export const PickExperience = ({
   const [currentPickIndex, setCurrentPickIndex] = useState(0);
   const [completedPicks, setCompletedPicks] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  
+  // Get flight product names
+  const flightProductNames = flightDetails.products.map(p => p.productName);
+  
+  // Use the new hook for run status and inventory integration
+  const { productStatuses, loading: runLoading, takeOne, putOne } = useRunStatus(flightProductNames);
 
   useEffect(() => {
     // Initialize shelves from products
@@ -49,6 +56,7 @@ export const PickExperience = ({
     if (isPaused) return;
 
     const shelf = shelves[shelfId];
+    const productStatus = productStatuses.find(p => p.productName === shelf.product.productName);
 
     if (shelf.status === "active") {
       try {
@@ -114,6 +122,44 @@ export const PickExperience = ({
     }
   };
 
+  const handleProductClick = async (productName: string) => {
+    if (isPaused) return;
+
+    const productStatus = productStatuses.find(p => p.productName === productName);
+    
+    if (!productStatus) return;
+
+    try {
+      if (productStatus.color === 'green' && productStatus.isInFlight) {
+        // Take one item
+        await takeOne(productName);
+        toast({
+          title: "Producto Tomado",
+          description: `Se tomó 1 unidad de ${productName}`,
+        });
+      } else if (productStatus.unitsInBasket > 0) {
+        // Put one back
+        await putOne(productName);
+        toast({
+          title: "Producto Devuelto",
+          description: `Se devolvió 1 unidad de ${productName}`,
+        });
+      } else {
+        toast({
+          title: "Acción No Permitida",
+          description: "Este producto no está en el carrito o no está activo",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo realizar la acción",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getShelfStyles = (status: Shelf["status"]) => {
     switch (status) {
       case "active":
@@ -124,6 +170,22 @@ export const PickExperience = ({
         return "bg-[hsl(var(--status-alert)/0.2)] border-[hsl(var(--status-alert))] border-2 animate-pulse";
       default:
         return "bg-muted border-border opacity-30";
+    }
+  };
+
+  const getProductStyles = (productStatus: any) => {
+    if (!productStatus) return "bg-muted border-border opacity-30";
+    
+    const baseStyles = "transition-all duration-300 cursor-pointer hover:scale-105";
+    
+    if (productStatus.color === 'green' && productStatus.isInFlight) {
+      return `${baseStyles} bg-green-100 border-green-500 border-2 animate-pulse-glow`;
+    } else if (productStatus.color === 'red') {
+      return `${baseStyles} bg-red-100 border-red-500 border-2 animate-pulse`;
+    } else if (!productStatus.isInFlight) {
+      return `${baseStyles} bg-gray-100 border-gray-300 border-2 opacity-50`;
+    } else {
+      return `${baseStyles} bg-yellow-100 border-yellow-500 border-2`;
     }
   };
 
@@ -176,39 +238,52 @@ export const PickExperience = ({
 
       {/* Main Pick Area */}
       <div className="relative h-[calc(100vh-140px)] flex items-center justify-center p-8">
-        {/* Left Shelves */}
+        {/* Left Shelves - All Inventory Products */}
         <div className="flex-1 space-y-4 pr-8">
-          {shelves
-            .filter((s) => s.side === "left")
-            .map((shelf) => (
+          {productStatuses
+            .filter((_, index) => index % 2 === 0)
+            .map((productStatus, index) => (
               <Card
-                key={shelf.id}
-                onClick={() => handleShelfClick(shelf.id)}
-                className={`p-6 transition-all duration-300 ${getShelfStyles(
-                  shelf.status
-                )} animate-slide-shelf`}
-                style={{ animationDelay: `${shelf.id * 100}ms` }}
+                key={productStatus.productName}
+                onClick={() => handleProductClick(productStatus.productName)}
+                className={`p-6 transition-all duration-300 ${getProductStyles(productStatus)} animate-slide-shelf`}
+                style={{ animationDelay: `${index * 100}ms` }}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <h3 className="font-bold text-foreground mb-1">
-                      {shelf.product.productName}
+                      {productStatus.productName}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {shelf.product.category}
+                      {productStatus.isInFlight ? "En vuelo" : "No en vuelo"}
                     </p>
+                    {productStatus.needsMore !== 0 && (
+                      <p className={`text-sm font-medium ${
+                        productStatus.needsMore > 0 ? 'text-red-600' : 'text-green-600'
+                      }`}>
+                        {productStatus.needsMore > 0 
+                          ? `Faltan ${productStatus.needsMore} unidades`
+                          : `Sobran ${Math.abs(productStatus.needsMore)} unidades`
+                        }
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
-                    {shelf.status === "active" && (
-                      <Badge className="bg-[hsl(var(--status-confirm))] text-background mb-2">
-                        {shelf.product.categoryQuantity} unidades
+                    {productStatus.color === 'green' && productStatus.isInFlight && (
+                      <Badge className="bg-green-500 text-white mb-2">
+                        {productStatus.unitsRemaining} disponibles
                       </Badge>
                     )}
-                    {shelf.status === "complete" && (
-                      <CheckCircle className="h-6 w-6 text-[hsl(var(--status-complete))]" />
+                    {productStatus.color === 'red' && (
+                      <AlertTriangle className="h-6 w-6 text-red-500" />
                     )}
-                    {shelf.status === "error" && (
-                      <XCircle className="h-6 w-6 text-[hsl(var(--status-alert))]" />
+                    {productStatus.unitsInBasket > 0 && (
+                      <Badge className="bg-blue-500 text-white mb-2">
+                        {productStatus.unitsInBasket} en carrito
+                      </Badge>
+                    )}
+                    {!productStatus.isInFlight && (
+                      <XCircle className="h-6 w-6 text-gray-400" />
                     )}
                   </div>
                 </div>
@@ -226,40 +301,53 @@ export const PickExperience = ({
           </Badge>
         </div>
 
-        {/* Right Shelves */}
+        {/* Right Shelves - All Inventory Products */}
         <div className="flex-1 space-y-4 pl-8">
-          {shelves
-            .filter((s) => s.side === "right")
-            .map((shelf) => (
+          {productStatuses
+            .filter((_, index) => index % 2 === 1)
+            .map((productStatus, index) => (
               <Card
-                key={shelf.id}
-                onClick={() => handleShelfClick(shelf.id)}
-                className={`p-6 transition-all duration-300 ${getShelfStyles(
-                  shelf.status
-                )} animate-slide-shelf`}
-                style={{ animationDelay: `${shelf.id * 100}ms` }}
+                key={productStatus.productName}
+                onClick={() => handleProductClick(productStatus.productName)}
+                className={`p-6 transition-all duration-300 ${getProductStyles(productStatus)} animate-slide-shelf`}
+                style={{ animationDelay: `${index * 100}ms` }}
               >
                 <div className="flex items-center justify-between">
                   <div className="text-left">
-                    {shelf.status === "active" && (
-                      <Badge className="bg-[hsl(var(--status-confirm))] text-background mb-2">
-                        {shelf.product.categoryQuantity} unidades
+                    {productStatus.color === 'green' && productStatus.isInFlight && (
+                      <Badge className="bg-green-500 text-white mb-2">
+                        {productStatus.unitsRemaining} disponibles
                       </Badge>
                     )}
-                    {shelf.status === "complete" && (
-                      <CheckCircle className="h-6 w-6 text-[hsl(var(--status-complete))]" />
+                    {productStatus.color === 'red' && (
+                      <AlertTriangle className="h-6 w-6 text-red-500" />
                     )}
-                    {shelf.status === "error" && (
-                      <XCircle className="h-6 w-6 text-[hsl(var(--status-alert))]" />
+                    {productStatus.unitsInBasket > 0 && (
+                      <Badge className="bg-blue-500 text-white mb-2">
+                        {productStatus.unitsInBasket} en carrito
+                      </Badge>
+                    )}
+                    {!productStatus.isInFlight && (
+                      <XCircle className="h-6 w-6 text-gray-400" />
                     )}
                   </div>
                   <div className="flex-1 text-right">
                     <h3 className="font-bold text-foreground mb-1">
-                      {shelf.product.productName}
+                      {productStatus.productName}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {shelf.product.category}
+                      {productStatus.isInFlight ? "En vuelo" : "No en vuelo"}
                     </p>
+                    {productStatus.needsMore !== 0 && (
+                      <p className={`text-sm font-medium ${
+                        productStatus.needsMore > 0 ? 'text-red-600' : 'text-green-600'
+                      }`}>
+                        {productStatus.needsMore > 0 
+                          ? `Faltan ${productStatus.needsMore} unidades`
+                          : `Sobran ${Math.abs(productStatus.needsMore)} unidades`
+                        }
+                      </p>
+                    )}
                   </div>
                 </div>
               </Card>

@@ -3,10 +3,12 @@ import { Dashboard } from "@/components/Dashboard";
 import { PreparationView } from "@/components/PreparationView";
 import { PickExperience } from "@/components/PickExperience";
 import { InventoryView } from "@/components/InventoryView";
+import { OrdersView } from "@/components/OrdersView";
+import { SimulationSettings } from "@/components/SimulationSettings";
 import { fetchFlights, fetchFlightDetails, startRun } from "@/components/services/flights";
 import { FlightDetails, Flight } from "@/types/flight";
 
-type View = "dashboard" | "preparation" | "picking" | "inventory";
+type View = "dashboard" | "preparation" | "picking" | "inventory" | "orders" | "settings";
 
 const Index = () => {
   const [currentView, setCurrentView] = useState<View>("dashboard");
@@ -66,13 +68,21 @@ const Index = () => {
       setSelectedFlight(null);
     } else if (currentView === "picking") {
       setCurrentView("preparation");
-    } else if (currentView === "inventory") {
+    } else if (currentView === "inventory" || currentView === "orders" || currentView === "settings") {
       setCurrentView("dashboard");
     }
   };
 
   const handleViewInventory = () => {
     setCurrentView("inventory");
+  };
+
+  const handleViewOrders = () => {
+    setCurrentView("orders");
+  };
+
+  const handleViewSettings = () => {
+    setCurrentView("settings");
   };
 
   if (loading) {
@@ -108,6 +118,8 @@ const Index = () => {
           flights={flights} 
           onStartPickRun={handleStartPickRun}
           onViewInventory={handleViewInventory}
+          onViewOrders={handleViewOrders}
+          onViewSettings={handleViewSettings}
         />
       )}
       {currentView === "preparation" && selectedFlight && (
@@ -126,6 +138,12 @@ const Index = () => {
       )}
       {currentView === "inventory" && (
         <InventoryView onBack={handleBack} />
+      )}
+      {currentView === "orders" && (
+        <OrdersView onBack={handleBack} />
+      )}
+      {currentView === "settings" && (
+        <SimulationSettings onBack={handleBack} />
       )}
     </>
   );

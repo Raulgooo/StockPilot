@@ -1,0 +1,11 @@
+product_name,weight_kg,price_per_unit,delivery_time_days,min_order_quantity,description
+Coca-Cola,0.33,1.50,2,50,Refresco de cola 330ml
+Lays Chips,0.15,2.00,1,50,Bolsas de papas fritas
+Water Bottle,0.5,0.80,1,50,Botellas de agua 500ml
+Sandwich,0.2,3.50,1,50,Sandwiches preparados
+Coffee,0.1,1.20,2,50,Café en cápsulas
+Tea,0.05,0.90,2,50,Bolsitas de té
+Chocolate Bar,0.1,2.50,3,50,Barras de chocolate
+Candy,0.05,1.00,3,50,Dulces variados
+Juice,0.25,2.20,2,50,Jugos de frutas
+Energy Drink,0.25,2.80,2,50,Bebidas energéticas
