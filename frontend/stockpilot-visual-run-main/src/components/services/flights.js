@@ -115,7 +115,7 @@ export async function startRun(flightNumber) {
 
 export async function takeOne(productName) {
   try {
-    return await api.post(`/run/take_one/${productName}`);
+    return await api.post(`/run/take_one/${encodeURIComponent(productName)}`);
   } catch (err) {
     console.error("Failed to take product:", err.message);
     throw err;
@@ -124,7 +124,7 @@ export async function takeOne(productName) {
 
 export async function putOne(productName) {
   try {
-    return await api.post(`/run/put_one/${productName}`);
+    return await api.post(`/run/put_one/${encodeURIComponent(productName)}`);
   } catch (err) {
     console.error("Failed to put product:", err.message);
     throw err;

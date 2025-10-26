@@ -3,7 +3,7 @@ import json
 import requests
 from datetime import datetime
 
-OPENROUTER_API_KEY = "Tsk-or-v1-373c0c9dcb81b7aaa9275d57c65d669fdd30d60a932efc611a586f5025a2ebab"  # cámbiala por la tuya
+OPENROUTER_API_KEY = "TU_API_KEY_DE_OPENROUTER"
 
 def generate_ai_inventory_report_openrouter():
     """
@@ -102,12 +102,3 @@ def generate_ai_inventory_report_openrouter():
         return {"status": "error", "message": str(e)}
 
 
-
-'''
-@app.post("/inventory/ai-report")
-def generar_reporte_ia():
-    """Genera un reporte con IA (OpenRouter) sobre productos en riesgo."""
-    result = generate_ai_inventory_report_openrouter()
-    return result
-
-'''

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getRunStatus, takeOneProduct, putOneProduct } from '@/components/services/run-status';
 import { getFullInventory } from '@/components/services/inventory';
 
@@ -41,6 +41,34 @@ export const useRunStatus = (flightProducts: string[]) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const computeStatuses = useCallback((runData: RunStatus, inventoryData: InventoryItem[]) => {
+    const statuses: ProductStatus[] = flightProducts.map(productName => {
+      const sensor = runData?.sensors?.[productName];
+      const basketCount = runData?.basket?.[productName] || 0;
+      const inventoryItems = (inventoryData || []).filter(item => ((item.product_name || '').trim().toLowerCase() === (productName || '').trim().toLowerCase()));
+
+      // If the sensor is not initialized, fall back to inventory counts so UI still works
+      const hasSensor = !!sensor;
+      const unitsRemaining = hasSensor ? sensor.units_remaining : inventoryItems.length;
+      const color = hasSensor ? sensor.color : (inventoryItems.length > 0 ? 'green' : 'white');
+
+      const expectedQuantity = unitsRemaining;
+      const needsMore = expectedQuantity - basketCount;
+
+      return {
+        productName,
+        color: color as 'red' | 'green' | 'white',
+        unitsRemaining: unitsRemaining || 0,
+        unitsInBasket: basketCount,
+        isInFlight: flightProducts.includes(productName),
+        inventoryItems,
+        needsMore: Math.round(needsMore)
+      } as ProductStatus;
+    });
+
+    setProductStatuses(statuses);
+  }, [flightProducts]);
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -49,32 +77,10 @@ export const useRunStatus = (flightProducts: string[]) => {
           getRunStatus(),
           getFullInventory()
         ]);
-        
+
         setRunStatus(runData);
         setInventory(inventoryData);
-        
-        // Calculate product statuses
-        const statuses: ProductStatus[] = flightProducts.map(productName => {
-          const sensor = runData.sensors[productName];
-          const basketCount = runData.basket[productName] || 0;
-          const inventoryItems = inventoryData.filter(item => item.product_name === productName);
-          
-          // Calculate how many more items are needed
-          const expectedQuantity = sensor?.expected_weight / (sensor?.current_weight / sensor?.units_remaining) || 0;
-          const needsMore = expectedQuantity - basketCount;
-          
-          return {
-            productName,
-            color: sensor?.color || 'white',
-            unitsRemaining: sensor?.units_remaining || 0,
-            unitsInBasket: basketCount,
-            isInFlight: flightProducts.includes(productName),
-            inventoryItems,
-            needsMore: Math.round(needsMore)
-          };
-        });
-        
-        setProductStatuses(statuses);
+        computeStatuses(runData, inventoryData);
         setError(null);
       } catch (err) {
         console.error('Failed to load run status:', err);
@@ -85,22 +91,24 @@ export const useRunStatus = (flightProducts: string[]) => {
     };
 
     loadData();
-    
+
     // Poll for updates every 2 seconds
     const interval = setInterval(loadData, 2000);
     return () => clearInterval(interval);
-  }, [flightProducts]);
+  }, [flightProducts, computeStatuses]);
+
+  const refreshData = async () => {
+    const [runData, inventoryData] = await Promise.all([getRunStatus(), getFullInventory()]);
+    setRunStatus(runData);
+    setInventory(inventoryData);
+    computeStatuses(runData, inventoryData);
+  };
 
   const takeOne = async (productName: string) => {
     try {
       await takeOneProduct(productName);
       // Refresh data after taking one
-      const [runData, inventoryData] = await Promise.all([
-        getRunStatus(),
-        getFullInventory()
-      ]);
-      setRunStatus(runData);
-      setInventory(inventoryData);
+      await refreshData();
     } catch (err) {
       console.error('Failed to take one product:', err);
       throw err;
@@ -111,12 +119,7 @@ export const useRunStatus = (flightProducts: string[]) => {
     try {
       await putOneProduct(productName);
       // Refresh data after putting one back
-      const [runData, inventoryData] = await Promise.all([
-        getRunStatus(),
-        getFullInventory()
-      ]);
-      setRunStatus(runData);
-      setInventory(inventoryData);
+      await refreshData();
     } catch (err) {
       console.error('Failed to put one product:', err);
       throw err;

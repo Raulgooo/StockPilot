@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timedelta
 import threading
 from inventory import C_lote, R_lote, D_lote, init_db as init_inventory_db
-from boton import generate_ai_inventory_report_openrouter
+
 
 
 # ---------- CONFIG ----------
@@ -230,8 +230,8 @@ def get_flight_products(flight_number: str):
 
     return products.to_dict_list()
 
-TRIGGER_TIMEOUT = 5  # segundos después del último cambio de peso
-SENSOR_POLL_INTERVAL = 1  # cada cuánto actualizamos el estado (segundos)
+TRIGGER_TIMEOUT = 0  # segundos después del último cambio de peso
+SENSOR_POLL_INTERVAL = 0  # cada cuánto actualizamos el estado (segundos)
 
 
 class Sensor:
@@ -589,9 +589,9 @@ def take_one(product_name: str):
             conn = sqlite3.connect("inventory.db")
             cur = conn.cursor()
             
-            # Find the first available item of this product
+            # Find the first available item of this product (case insensitive)
             cur.execute(
-                "SELECT id_individual FROM inventory WHERE product_name = ? ORDER BY caducidad ASC LIMIT 1",
+                "SELECT id_individual FROM inventory WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?)) ORDER BY caducidad ASC LIMIT 1",
                 (product_name,)
             )
             result = cur.fetchone()
@@ -604,10 +604,10 @@ def take_one(product_name: str):
                 )
                 conn.commit()
                 conn.close()
-                return {"status": "ok", "message": f"Taken one {product_name} from inventory"}
+                return {"status": "ok", "message": f"Taken one {product_name} from inventory", "removed_id": result[0]}
             else:
                 conn.close()
-                return {"status": "ok", "message": f"Taken one {product_name} (no inventory item found)"}
+                return {"status": "ok", "message": f"Taken one {product_name} (no inventory item found)", "removed_id": None}
         except Exception as e:
             # If inventory update fails, still return success for the sensor
             return {"status": "ok", "message": f"Taken one {product_name} (inventory update failed: {str(e)})"}

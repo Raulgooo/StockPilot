@@ -39,7 +39,7 @@ export const Dashboard = ({ flights, onStartPickRun, onViewInventory, onViewOrde
         {/* Header */}
         <div className="mb-8 text-center animate-fade-in-up">
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-2">
-            PickRun Navigator
+            StockPilot - Dashboard
           </h1>
           <p className="text-lg text-muted-foreground">Centro de Operaciones</p>
         </div>
@@ -70,7 +70,7 @@ export const Dashboard = ({ flights, onStartPickRun, onViewInventory, onViewOrde
                 >
                   {isPriority(flight.flightNumber) && (
                     <Badge className="mb-4 bg-[hsl(var(--priority-high))] text-background font-bold">
-                      PRIORIDAD
+                      GE REDY!
                     </Badge>
                   )}
 
@@ -106,7 +106,7 @@ export const Dashboard = ({ flights, onStartPickRun, onViewInventory, onViewOrde
                           : "bg-primary hover:bg-primary/90"
                       }`}
                     >
-                      INICIAR PICK RUN
+                      INICIAR SURTIDO
                     </Button>
                   </div>
                 </Card>

@@ -6,7 +6,6 @@ import { Progress } from "@/components/ui/progress";
 import { ShoppingCart, Package, CheckCircle, XCircle, Pause, ArrowLeft, AlertTriangle } from "lucide-react";
 import { FlightDetails, Product } from "@/types/flight";
 import { useToast } from "@/hooks/use-toast";
-import { takeOne, putOne, getRunStatus } from "@/components/services/flights";
 import { useRunStatus } from "@/hooks/use-run-status";
 
 interface PickExperienceProps {
@@ -118,7 +117,7 @@ export const PickExperience = ({
             s.id === shelfId && s.status === "error" ? { ...s, status: "inactive" } : s
           )
         );
-      }, 2000);
+      }, 0);
     }
   };
 
@@ -178,8 +177,14 @@ export const PickExperience = ({
     
     const baseStyles = "transition-all duration-300 cursor-pointer hover:scale-105";
     
+    if (productStatus.unitsRemaining <= 0) {
+      return `${baseStyles} bg-red-100 border-red-500 border-2 animate-pulse`;
+    }
+    
     if (productStatus.color === 'green' && productStatus.isInFlight) {
-      return `${baseStyles} bg-green-100 border-green-500 border-2 animate-pulse-glow`;
+      return `${baseStyles} bg-green-100 border-green-500 border-2 ${
+        productStatus.unitsInBasket > 0 ? 'animate-pulse-glow' : ''
+      }`;
     } else if (productStatus.color === 'red') {
       return `${baseStyles} bg-red-100 border-red-500 border-2 animate-pulse`;
     } else if (!productStatus.isInFlight) {
